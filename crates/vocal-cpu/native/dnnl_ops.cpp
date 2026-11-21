@@ -206,7 +206,7 @@ static std::unique_ptr<Kernel> convolution(Graph &g, size_t id) {
 std::unique_ptr<Kernel> prepare_dnnl(Graph &g, size_t id) {
   auto &n = g.nodes[id];
 #ifdef VOCAL_CPU_METAL
-  if (n.op == 23 && g.linear_mode == 4)
+  if ((n.op == 23 || n.op == 53) && g.linear_mode == 4)
     if (auto kernel = prepare_metal_linear(g, id))
       return kernel;
 #endif

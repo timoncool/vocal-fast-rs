@@ -48,7 +48,7 @@ jobs:
           if [[ "$GITHUB_REF_NAME" = yue2/macos-metal-rvc ]]; then
             otool -L "$dest/vocal-fast" | grep -F MetalPerformanceShaders.framework
             otool -L "$dest/vocal-fast" | grep -F Metal.framework
-            cargo test --locked -p vocal-cpu --features metal-projections --test linear --no-run
+            cargo test --release --locked -p vocal-cpu --features metal-projections --test linear --no-run
           fi
           cd "$dest"
           env -u DYLD_LIBRARY_PATH ./vocal-fast --help
