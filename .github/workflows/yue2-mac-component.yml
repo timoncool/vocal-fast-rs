@@ -2,7 +2,7 @@ name: YuE2 macOS arm64 RVC component
 
 on:
   push:
-    branches: [yue2/portable-cpu-runtime]
+    branches: [yue2/portable-cpu-runtime, yue2/macos-metal-rvc]
   workflow_dispatch:
 
 permissions:
@@ -27,7 +27,11 @@ jobs:
           cmake -S .build/onednn-source -B "$RUNNER_TEMP/dnnl-build"             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$VOCAL_CPU_ONEDNN_ROOT"             -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_INSTALL_NAME_DIR=@rpath             -DDNNL_CPU_RUNTIME=THREADPOOL -DDNNL_GPU_RUNTIME=NONE -DONEDNN_BUILD_GRAPH=OFF             -DDNNL_BUILD_TESTS=OFF -DDNNL_BUILD_EXAMPLES=OFF -DDNNL_ENABLE_WORKLOAD=INFERENCE
           cmake --build "$RUNNER_TEMP/dnnl-build" --config Release --parallel "$(sysctl -n hw.logicalcpu)"
           cmake --install "$RUNNER_TEMP/dnnl-build"
-          cargo build --release --locked -p vocal-fast --features cpu-graph
+          features=cpu-graph
+          if [[ "$GITHUB_REF_NAME" = yue2/macos-metal-rvc ]]; then
+            features=metal-projections
+          fi
+          cargo build --release --locked -p vocal-fast --features "$features"
           dest="$RUNNER_TEMP/rvc-component"
           mkdir -p "$dest/licenses"
           cp LICENSE "$dest/licenses/vocal-fast-rs-LICENSE"
@@ -41,9 +45,17 @@ jobs:
             if otool -L "$bin" | tail -n +2 | grep -E '/Users/|/opt/homebrew|/opt/hostedtoolcache'; then exit 1; fi
           done
           otool -l "$dest/vocal-fast" | grep -F 'path @executable_path'
+          if [[ "$GITHUB_REF_NAME" = yue2/macos-metal-rvc ]]; then
+            otool -L "$dest/vocal-fast" | grep -F MetalPerformanceShaders.framework
+            otool -L "$dest/vocal-fast" | grep -F Metal.framework
+            cargo test --locked -p vocal-cpu --features metal-projections --test linear --no-run
+          fi
           cd "$dest"
           env -u DYLD_LIBRARY_PATH ./vocal-fast --help
           archive="$RUNNER_TEMP/vocal-fast-macos-arm64-cpu.tar.gz"
+          if [[ "$GITHUB_REF_NAME" = yue2/macos-metal-rvc ]]; then
+            archive="$RUNNER_TEMP/vocal-fast-macos-arm64-metal-preview.tar.gz"
+          fi
           tar -czf "$archive" .
           relocated="$RUNNER_TEMP/Музыкальная студия/RVC"
           mkdir -p "$relocated"
@@ -54,5 +66,5 @@ jobs:
           env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH ./vocal-fast --help
       - uses: actions/upload-artifact@v4
         with:
-          name: vocal-fast-macos-arm64-cpu
-          path: ${{ runner.temp }}/vocal-fast-macos-arm64-cpu.tar.gz
+          name: ${{ github.ref_name == 'yue2/macos-metal-rvc' && 'vocal-fast-macos-arm64-metal-preview' || 'vocal-fast-macos-arm64-cpu' }}
+          path: ${{ runner.temp }}/vocal-fast-macos-arm64-*.tar.gz

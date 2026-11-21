@@ -96,9 +96,13 @@ pub fn run(
                             .map_err(|_| "VOCAL_CPU_THREADS must be an integer")?;
                     }
                     cpu.profile = env_bool("VOCAL_CPU_PROFILE", false)?;
+                    let metal = env_bool("VOCAL_OFFLINE_METAL_PROJECTIONS", false)?;
+                    if metal {
+                        cpu.linear_mode = vocal_cpu::CpuLinearMode::Metal;
+                    }
                     cpu.fuse = env_bool("VOCAL_CPU_FUSE", true)?;
                     cpu.channels_last = env_bool("VOCAL_CPU_CHANNELS_LAST", true)?;
-                    let policy = serde_json::json!({"execution": "cpu_graph", "operator_library": {"name": "oneDNN", "version": vocal_cpu::operator_version()}, "precision": "fp32", "config": cpu});
+                    let policy = serde_json::json!({"execution": if metal { "metal_projections_hybrid" } else { "cpu_graph" }, "operator_library": {"name": "oneDNN", "version": vocal_cpu::operator_version()}, "precision": "fp32", "config": cpu});
                     let mut p =
                         vocal_engine::offline::CpuOfflinePipeline::new(sources.clone(), cpu)?;
                     p.trace_directory = trace.clone();

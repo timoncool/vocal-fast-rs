@@ -63,6 +63,9 @@ struct Graph {
   CpuAttention attention{};
   CpuConvolution convolution{};
   uint32_t linear_mode = 0;
+#ifdef VOCAL_CPU_METAL
+  std::shared_ptr<struct MetalLinearContext> metal_linear;
+#endif
   std::unordered_map<size_t, std::shared_ptr<Storage>> workspace_slots;
   std::vector<std::pair<size_t, dnnl::memory>> workspace_bindings;
   std::vector<std::shared_ptr<Storage>> compiling_workspaces;
@@ -85,6 +88,10 @@ struct Graph {
 std::unique_ptr<Kernel> prepare_dnnl(Graph &, size_t);
 std::unique_ptr<Kernel> prepare_convolution_matmul(Graph &, size_t);
 std::unique_ptr<Kernel> prepare_linear(Graph &, size_t);
+#ifdef VOCAL_CPU_METAL
+std::unique_ptr<Kernel> prepare_metal_linear(Graph &, size_t);
+extern "C" bool vocal_cpu_metal_available();
+#endif
 void append_activation_post_op(dnnl::primitive_attr &, const Node &);
 std::unique_ptr<Kernel> prepare_int8(Graph &, size_t);
 void observe_input(Graph &, size_t);

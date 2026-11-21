@@ -219,6 +219,7 @@ impl CpuGraph {
                     crate::CpuLinearMode::InnerProduct => 1,
                     crate::CpuLinearMode::Pointwise1d => 2,
                     crate::CpuLinearMode::Hybrid => 3,
+                    crate::CpuLinearMode::Metal => 4,
                 },
                 &ffi::Convolution {
                     mode: match config.convolution.mode {

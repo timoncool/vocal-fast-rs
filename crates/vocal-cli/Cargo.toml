@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 cpu-graph = ["vocal-engine/cpu-graph", "vocal-runtime/cpu-graph", "dep:vocal-cpu"]
+metal-projections = ["cpu-graph", "vocal-cpu/metal-projections"]
 directml = ["vocal-engine/directml", "vocal-runtime/directml", "dep:vocal-directml"]
 tensorrt-rtx = [
     "vocal-engine/tensorrt-rtx",
