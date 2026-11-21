@@ -1,4 +1,5 @@
 #include "internal.h"
+#include "projection_rows.h"
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
@@ -41,11 +42,8 @@ static id<MTLBuffer> reserve(id<MTLDevice> device, id<MTLBuffer> buffer,
 
 static void upload(id<MTLBuffer> buffer, MPSMatrixDescriptor *descriptor,
                    const void *input) {
-  const auto row_bytes = descriptor.columns * sizeof(float);
-  const auto *source = static_cast<const uint8_t *>(input);
-  auto *target = static_cast<uint8_t *>(buffer.contents);
-  for (NSUInteger row = 0; row < descriptor.rows; ++row)
-    std::memcpy(target + row * descriptor.rowBytes, source + row * row_bytes, row_bytes);
+  upload_projection_rows(buffer.contents, descriptor.rowBytes, input,
+                         descriptor.rows, descriptor.columns);
 }
 
 class MetalLinear final : public Kernel {
@@ -99,18 +97,11 @@ public:
         const char *message = command.error.localizedDescription.UTF8String;
         throw std::runtime_error(message ? message : "Metal projection execution failed");
       }
-      const auto *source = static_cast<const uint8_t *>(context.output.contents);
-      auto *target = static_cast<float *>(g.tensors[id].data());
       const auto *bias = node.inputs.size() == 3
           ? static_cast<const float *>(g.tensors[node.inputs[2]].data()) : nullptr;
-      const auto columns = output_layout.columns;
-      for (NSUInteger row = 0; row < output_layout.rows; ++row) {
-        auto *out = target + row * columns;
-        std::memcpy(out, source + row * output_layout.rowBytes, columns * sizeof(float));
-        if (bias)
-          for (NSUInteger col = 0; col < columns; ++col)
-            out[col] += bias[col];
-      }
+      download_projection_rows(static_cast<float *>(g.tensors[id].data()),
+                               context.output.contents, output_layout.rowBytes,
+                               output_layout.rows, output_layout.columns, bias);
     }
   }
 };
