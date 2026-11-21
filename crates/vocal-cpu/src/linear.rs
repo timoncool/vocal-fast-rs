@@ -14,4 +14,6 @@ pub enum CpuLinearMode {
     /// Experimental shape dispatch: retain MatMul for long, wide reductions;
     /// use packed pointwise projections for the remaining eligible layouts.
     Hybrid,
+    /// Apple Silicon Metal for selected FP32 constant-weight projections.
+    Metal,
 }

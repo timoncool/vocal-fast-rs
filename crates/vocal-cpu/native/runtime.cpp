@@ -28,7 +28,13 @@ extern "C" void *vocal_cpu_create(const CpuNode *raw, size_t count,
     require(spin_us <= 1000, "invalid thread spin budget");
     require(convolution && convolution->mode <= 2,
             "invalid convolution configuration");
+#ifdef VOCAL_CPU_METAL
+    require(linear_mode <= 4, "invalid linear implementation");
+    if (linear_mode == 4)
+      require(vocal_cpu_metal_available(), "Metal Performance Shaders device unavailable");
+#else
     require(linear_mode <= 3, "invalid linear implementation");
+#endif
     require(attention && attention->mode <= 1 && attention->query_tile > 0 &&
                 attention->query_tile <= 32 && attention->key_tile > 0 &&
                 attention->key_tile <= 256, "invalid attention configuration");

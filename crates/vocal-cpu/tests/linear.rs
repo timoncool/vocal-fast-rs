@@ -4,6 +4,86 @@ use vocal_graph::{
     graph::{DType, GraphBuilder, Op},
 };
 
+#[test]
+#[cfg(all(
+    target_os = "macos",
+    target_arch = "aarch64",
+    feature = "metal-projections"
+))]
+#[ignore = "requires a physical Apple Silicon GPU"]
+fn metal_fp32_projection_matches_reference_and_reports_placement() {
+    for transpose in [false, true] {
+        let g = GraphBuilder::default();
+        let input = g.input("x", &[2, 17, 13], DType::F32);
+        let coefficients = (0..13 * 19)
+            .map(|i| (i as f32 * 0.07).sin())
+            .collect::<Vec<_>>();
+        let shape = if transpose { [19, 13] } else { [13, 19] };
+        let weights = g.constant(&coefficients, &shape, Precision::Fp32);
+        g.mark("y", &g.matmul(&input, &weights, transpose));
+        let mut graph = CpuGraph::compile(
+            g,
+            &CpuConfig {
+                profile: true,
+                linear_mode: CpuLinearMode::Metal,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for scale in [1., -0.35] {
+            let input = (0..34 * 13)
+                .map(|i| (i as f32 * 0.03).cos() * scale)
+                .collect::<Vec<_>>();
+            let data = input
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect::<Vec<_>>();
+            let output = graph.run(&[("x", &data)]).unwrap().f32("y").unwrap();
+            for row in 0..34 {
+                for col in 0..19 {
+                    let expected: f64 = (0..13)
+                        .map(|k| {
+                            let weight = if transpose {
+                                col * 13 + k
+                            } else {
+                                k * 19 + col
+                            };
+                            f64::from(input[row * 13 + k]) * f64::from(coefficients[weight])
+                        })
+                        .sum();
+                    assert!((f64::from(output[row * 19 + col]) - expected).abs() < 1e-5);
+                }
+            }
+            assert!(
+                graph
+                    .timings()
+                    .iter()
+                    .any(|node| node.implementation == "metal:mps-matrix-fp32")
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(not(all(
+    target_os = "macos",
+    target_arch = "aarch64",
+    feature = "metal-projections"
+)))]
+fn metal_request_is_rejected_on_other_platforms() {
+    let config = CpuConfig {
+        linear_mode: CpuLinearMode::Metal,
+        ..Default::default()
+    };
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("macOS arm64")
+    );
+}
+
 // Independently integrate the Gaussian in FP64 rather than reuse a native GELU.
 fn gelu_reference(x: f64) -> f64 {
     let z = x / 2f64.sqrt();

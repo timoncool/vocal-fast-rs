@@ -123,6 +123,11 @@ impl CpuConfig {
         }
     }
     pub fn validate(&self) -> Result<(), CpuError> {
+        if self.linear_mode == crate::CpuLinearMode::Metal && !cfg!(cpu_metal_kernel) {
+            return Err(CpuError::Config(
+                "Metal projections require macOS arm64".into(),
+            ));
+        }
         self.attention.validate()?;
         self.f0
             .validate(self.window_samples, self.append_hubert_frame)?;

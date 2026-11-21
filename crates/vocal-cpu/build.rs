@@ -67,7 +67,30 @@ fn main() {
         build.file(&path);
         println!("cargo:rerun-if-changed={path}");
     }
+    let metal = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos")
+        && env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("aarch64")
+        && env::var_os("CARGO_FEATURE_METAL_PROJECTIONS").is_some();
+    if metal {
+        build.define("VOCAL_CPU_METAL", None);
+    }
     build.compile("vocal_cpu_native");
+    if metal {
+        cc::Build::new()
+            .cpp(true)
+            .std("c++20")
+            .opt_level(3)
+            .flag("-fobjc-arc")
+            .define("VOCAL_CPU_METAL", None)
+            .include(root.join("include"))
+            .file("native/metal_linear.mm")
+            .compile("vocal_cpu_metal");
+        for framework in ["Foundation", "Metal", "MetalPerformanceShaders"] {
+            println!("cargo:rustc-link-lib=framework={framework}");
+        }
+        println!("cargo:rustc-cfg=cpu_metal_kernel");
+    }
+    println!("cargo:rustc-check-cfg=cfg(cpu_metal_kernel)");
+    println!("cargo:rerun-if-changed=native/metal_linear.mm");
     if avx2 {
         cc::Build::new()
             .cpp(true)
