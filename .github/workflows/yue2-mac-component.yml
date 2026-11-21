@@ -29,7 +29,10 @@ jobs:
           cmake --install "$RUNNER_TEMP/dnnl-build"
           cargo build --release --locked -p vocal-fast --features cpu-graph
           dest="$RUNNER_TEMP/rvc-component"
-          mkdir -p "$dest"
+          mkdir -p "$dest/licenses"
+          cp LICENSE "$dest/licenses/vocal-fast-rs-LICENSE"
+          cp .build/onednn-source/LICENSE "$dest/licenses/oneDNN-LICENSE"
+          cp .build/onednn-source/THIRD-PARTY-PROGRAMS "$dest/licenses/oneDNN-THIRD-PARTY-PROGRAMS"
           cp target/release/vocal-fast "$dest"
           cp -a "$VOCAL_CPU_ONEDNN_ROOT"/lib/libdnnl*.dylib "$dest/"
           for bin in "$dest"/vocal-fast "$dest"/*.dylib; do
@@ -40,7 +43,15 @@ jobs:
           otool -l "$dest/vocal-fast" | grep -F 'path @executable_path'
           cd "$dest"
           env -u DYLD_LIBRARY_PATH ./vocal-fast --help
-          tar -czf "$RUNNER_TEMP/vocal-fast-macos-arm64-cpu.tar.gz" .
+          archive="$RUNNER_TEMP/vocal-fast-macos-arm64-cpu.tar.gz"
+          tar -czf "$archive" .
+          relocated="$RUNNER_TEMP/Музыкальная студия/RVC"
+          mkdir -p "$relocated"
+          tar -xzf "$archive" -C "$relocated"
+          cd "$relocated"
+          codesign --verify --strict ./vocal-fast
+          codesign --verify --strict ./libdnnl.3.dylib
+          env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH ./vocal-fast --help
       - uses: actions/upload-artifact@v4
         with:
           name: vocal-fast-macos-arm64-cpu
