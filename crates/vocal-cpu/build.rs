@@ -138,10 +138,5 @@ fn main() {
                     .unwrap();
             }
         }
-    } else {
-        println!(
-            "cargo:rustc-link-arg=-Wl,-rpath,{}",
-            root.join("lib").display()
-        );
     }
 }
