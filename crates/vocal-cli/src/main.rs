@@ -28,6 +28,8 @@ mod cli_logging;
 mod cli_state;
 mod model_command;
 mod offline_command;
+#[cfg(feature = "tensorrt-rtx")]
+mod yue2_worker;
 
 use cli_config::CliConfig;
 use cli_error::CliResult;
@@ -82,6 +84,10 @@ fn main() -> ExitCode {
 fn run(args: Vec<String>) -> CliResult<()> {
     let cli_config = CliConfig::default();
     match args.as_slice() {
+        #[cfg(feature = "tensorrt-rtx")]
+        [command, models, cache] if command == "yue2-worker" => {
+            yue2_worker::run(models.as_ref(), cache.as_ref())
+        }
         [command, subcommand, arguments @ ..]
             if command == "model"
                 && matches!(

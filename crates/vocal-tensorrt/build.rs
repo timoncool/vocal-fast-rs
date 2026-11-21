@@ -8,6 +8,7 @@ use std::{
 };
 
 fn main() {
+    let windows = target_os_is_windows();
     for variable in [
         "TENSORRT_RTX_ROOT",
         "TRT_RTX_ROOT",
@@ -23,12 +24,20 @@ fn main() {
         .or_else(|| env::var_os("TRT_ROOT"))
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from(r"C:\Program Files\NVIDIA Corporation\TensorRT-RTX\1.6.1.120")
+            if windows {
+                PathBuf::from(r"C:\Program Files\NVIDIA Corporation\TensorRT-RTX\1.6.1.120")
+            } else {
+                PathBuf::from("/opt/TensorRT-RTX")
+            }
         });
     let c = env::var_os("CUDA_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4")
+            if windows {
+                PathBuf::from(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4")
+            } else {
+                PathBuf::from("/usr/local/cuda")
+            }
         });
     // Native graphs are statically linked: a nonexistent DLL's timestamp
     // cannot invalidate plans after graph fixes. Hash builder sources instead.
@@ -59,10 +68,26 @@ fn main() {
             .expect("builder source exists")
             .hash(&mut fingerprint);
     }
+    let (runtime, parser, runtime_dir) = if windows {
+        (
+            "tensorrt_rtx_1_6",
+            "tensorrt_onnxparser_rtx_1_6",
+            r.join("bin"),
+        )
+    } else {
+        ("tensorrt_rtx", "tensorrt_onnxparser_rtx", r.join("lib"))
+    };
+    let library = |name: &str| {
+        runtime_dir.join(if windows {
+            format!("{name}.dll")
+        } else {
+            format!("lib{name}.so")
+        })
+    };
     for file in [
         r.join("include/NvInferVersion.h"),
-        r.join("bin/tensorrt_rtx_1_6.dll"),
-        r.join("bin/tensorrt_onnxparser_rtx_1_6.dll"),
+        library(runtime),
+        library(parser),
     ] {
         println!("cargo:rerun-if-changed={}", file.display());
         if file.extension().is_some_and(|ext| ext == "h") {
@@ -106,15 +131,15 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", r.join("lib").display());
     println!(
         "cargo:rustc-link-search=native={}",
-        c.join("lib/x64").display()
+        c.join(if windows { "lib/x64" } else { "lib64" }).display()
     );
-    println!("cargo:rustc-link-lib=dylib=tensorrt_rtx_1_6");
-    println!("cargo:rustc-link-lib=dylib=tensorrt_onnxparser_rtx_1_6");
+    println!("cargo:rustc-link-lib=dylib={runtime}");
+    println!("cargo:rustc-link-lib=dylib={parser}");
     println!("cargo:rustc-link-lib=dylib=cudart");
     println!("cargo:rustc-link-lib=dylib=cufft");
     println!("cargo:rerun-if-env-changed=VOCAL_TRT_COPY_DLLS");
     println!("cargo:rerun-if-env-changed=VOCAL_TRT_DLL_DIR");
-    if target_os_is_windows() && build_support::enabled() {
+    if windows && build_support::enabled() {
         let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set"));
         build_support::deploy(&r, &c, &out_dir);
     }
@@ -140,25 +165,49 @@ fn main() {
         .include(c.join("include"))
         .flag_if_supported("/std:c++17")
         .flag_if_supported("/EHsc")
+        .flag_if_supported("-std=c++17")
+        .flag_if_supported("-Wno-deprecated-declarations")
         .compile("vocal_tensorrt_native");
 
     // cuFFT is a CUDA translation unit rather than a TensorRT plugin. Compile
     // it with nvcc into a small static library so the Rust crate only links a
     // stable C ABI. The plan and scratch allocations are created at runtime,
     // before any CUDA graph capture begins.
-    let nvcc = c.join("bin/nvcc.exe");
+    let nvcc = c.join(if windows { "bin/nvcc.exe" } else { "bin/nvcc" });
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is set"));
-    let cufft_lib = out_dir.join("vocal_tensorrt_cufft.lib");
-    let cl = find_msvc_cl().unwrap_or_else(|| {
-        panic!("nvcc requires cl.exe; set CXX or run cargo from a VS developer shell")
+    let cufft_lib = out_dir.join(if windows {
+        "vocal_tensorrt_cufft.lib"
+    } else {
+        "libvocal_tensorrt_cufft.a"
     });
-    let status = Command::new(&nvcc)
+    let mut compile = Command::new(&nvcc);
+    if windows {
+        let cl = find_msvc_cl().unwrap_or_else(|| {
+            panic!("nvcc requires cl.exe; set CXX or run cargo from a VS developer shell")
+        });
+        compile
+            .arg("-ccbin")
+            .arg(cl)
+            .args(["-Xcompiler=/EHsc", "-Xcompiler=/MD"]);
+    } else {
+        let compiler = cc::Build::new().cpp(true).get_compiler();
+        compile
+            .arg("-ccbin")
+            .arg(compiler.path())
+            .arg("-Xcompiler=-fPIC");
+    }
+    println!("cargo:rerun-if-env-changed=VOCAL_CUDA_ARCHS");
+    let archs = env::var("VOCAL_CUDA_ARCHS").unwrap_or_else(|_| "75;80;86;89;90;120".into());
+    for arch in archs.split(';') {
+        assert!(
+            arch.len() >= 2 && arch.bytes().all(|c| c.is_ascii_digit()),
+            "invalid CUDA architecture {arch}"
+        );
+        compile.arg(format!("-gencode=arch=compute_{arch},code=sm_{arch}"));
+    }
+    let status = compile
         .arg("-lib")
         .arg("-std=c++17")
-        .arg("-ccbin")
-        .arg(&cl)
-        .arg("-Xcompiler=/EHsc")
-        .arg("-Xcompiler=/MD")
         .arg("-I")
         .arg("native")
         .arg("-I")
