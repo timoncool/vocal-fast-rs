@@ -8,7 +8,7 @@ cuda=${CUDA_PATH:-/usr/local/cuda}
 mkdir "$stage"
 install -m 755 "$CARGO_TARGET_DIR/release/vocal-fast" "$stage/vocal-fast"
 mkdir "$stage/licenses"
-for library in libtensorrt_rtx.so.1 libtensorrt_onnxparser_rtx.so.1 libtensorrt_shim.so; do
+for library in libtensorrt_rtx.so.1 libtensorrt_onnxparser_rtx.so.1; do
     install -m 644 "$TENSORRT_RTX_ROOT/lib/$library" "$stage/$library"
 done
 
