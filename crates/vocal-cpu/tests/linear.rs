@@ -20,7 +20,11 @@ fn metal_fp32_projection_matches_reference_and_reports_placement() {
             .collect::<Vec<_>>();
         let shape = if transpose { [19, 13] } else { [13, 19] };
         let weights = g.constant(&coefficients, &shape, Precision::Fp32);
-        g.mark("y", &g.matmul(&input, &weights, transpose));
+        let bias = (0..19).map(|i| i as f32 * 0.03 - 0.2).collect::<Vec<_>>();
+        let bias_tensor = g.constant(&bias, &[19], Precision::Fp32);
+        let projection = g.matmul(&input, &weights, transpose);
+        g.mark("y", &projection);
+        g.mark("biased", &g.add(&projection, &bias_tensor));
         let mut graph = CpuGraph::compile(
             g,
             &CpuConfig {
@@ -38,7 +42,9 @@ fn metal_fp32_projection_matches_reference_and_reports_placement() {
                 .iter()
                 .flat_map(|value| value.to_le_bytes())
                 .collect::<Vec<_>>();
-            let output = graph.run(&[("x", &data)]).unwrap().f32("y").unwrap();
+            let result = graph.run(&[("x", &data)]).unwrap();
+            let output = result.f32("y").unwrap();
+            let biased = result.f32("biased").unwrap();
             for row in 0..34 {
                 for col in 0..19 {
                     let expected: f64 = (0..13)
@@ -52,13 +58,19 @@ fn metal_fp32_projection_matches_reference_and_reports_placement() {
                         })
                         .sum();
                     assert!((f64::from(output[row * 19 + col]) - expected).abs() < 1e-5);
+                    assert!(
+                        (f64::from(biased[row * 19 + col]) - expected - f64::from(bias[col])).abs()
+                            < 1e-5
+                    );
                 }
             }
-            assert!(
+            assert_eq!(
                 graph
                     .timings()
                     .iter()
-                    .any(|node| node.implementation == "metal:mps-matrix-fp32")
+                    .filter(|node| node.implementation == "metal:mps-matrix-fp32")
+                    .count(),
+                2,
             );
         }
     }

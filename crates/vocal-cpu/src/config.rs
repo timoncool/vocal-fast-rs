@@ -125,7 +125,7 @@ impl CpuConfig {
     pub fn validate(&self) -> Result<(), CpuError> {
         if self.linear_mode == crate::CpuLinearMode::Metal && !cfg!(cpu_metal_kernel) {
             return Err(CpuError::Config(
-                "Metal projections require macOS arm64".into(),
+                "Metal projections require macOS arm64 with the metal-projections feature".into(),
             ));
         }
         self.attention.validate()?;
