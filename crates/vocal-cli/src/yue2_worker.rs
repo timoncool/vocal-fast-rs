@@ -139,7 +139,12 @@ impl Worker<'_> {
             return Err("native RVC returned invalid audio".into());
         }
         vocal_audio::write_wav_pcm16(&request.output, details.output_sample_rate, &wave)?;
-        Ok(serde_json::to_value(details)?)
+        Ok(json!({
+            "offline": details,
+            "last_segment_cuda_graph": pipeline.graph_stats(),
+            "last_segment_retrieval_ms": pipeline.retrieval_ms(),
+            "retrieval_blend": config.conversion.index_ratio,
+        }))
     }
 }
 

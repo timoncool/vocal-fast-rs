@@ -294,6 +294,7 @@ pub struct TensorRtOfflinePipeline {
     pipeline: Option<vocal_tensorrt::RvcTrtPipeline>,
     sample_rate: u32,
     fingerprint: u64,
+    retrieval_ms: f64,
 }
 #[cfg(feature = "tensorrt-rtx")]
 impl TensorRtOfflinePipeline {
@@ -341,7 +342,20 @@ impl TensorRtOfflinePipeline {
             trace_directory: None,
             pipeline: None,
             fingerprint: hash.finish(),
+            retrieval_ms: 0.0,
         })
+    }
+
+    /// CUDA graph lifetime counters for the currently loaded segment shape.
+    pub fn graph_stats(&self) -> Option<vocal_tensorrt::RvcCudaGraphStats> {
+        self.pipeline
+            .as_ref()
+            .map(|pipeline| pipeline.cuda_graph_stats())
+    }
+
+    /// GPU time spent in retrieval for the last completed segment.
+    pub fn retrieval_ms(&self) -> f64 {
+        self.retrieval_ms
     }
     fn prepare(&mut self, samples: usize) -> Result<(), EngineError> {
         use vocal_tensorrt::{RvcTrtPipeline, RvcTrtPipelineArtifacts, RvcTrtProfile};
@@ -453,6 +467,7 @@ impl OfflineVoicePipeline for TensorRtOfflinePipeline {
             .map_err(backend_error)?;
         let inference = Instant::now();
         let result = p.process(waveform, 0).map_err(backend_error)?;
+        self.retrieval_ms = result.timings.retrieval_enqueue_ms;
         let inference_ms = inference.elapsed().as_secs_f64() * 1000.;
         if let Some(path) = trace_base(
             &self.trace_directory,
