@@ -116,6 +116,7 @@ fn main() {
         "attention_simd.cpp",
         "attention_simd.h",
         "normalization_simd.cpp",
+        "projection_rows.h",
     ] {
         println!("cargo:rerun-if-changed=native/{file}");
     }

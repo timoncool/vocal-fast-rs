@@ -28,6 +28,10 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Check repository whitespace
         run: git diff --check
+      - name: Verify portable Metal matrix row handling
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror crates/vocal-cpu/tests/projection_rows.cpp -o "$RUNNER_TEMP/projection_rows"
+          "$RUNNER_TEMP/projection_rows"
       - name: Check core workspace
         run: cargo check --workspace --exclude vocal-cpu --exclude vocal-tensorrt --locked
       - name: Test core workspace
