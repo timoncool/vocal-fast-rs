@@ -14,7 +14,7 @@ struct MetalLinearContext {
 extern "C" bool vocal_cpu_metal_available() {
   @autoreleasepool {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-    return device && MPSSupportsMTLDevice(device);
+    return device && MPSSupportsMTLDevice(device) && [device newCommandQueue] != nil;
   }
 }
 

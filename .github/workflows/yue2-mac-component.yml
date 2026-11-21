@@ -2,7 +2,7 @@ name: YuE2 macOS arm64 RVC component
 
 on:
   push:
-    branches: [yue2/portable-cpu-runtime, yue2/macos-cpu-worker]
+    branches: [yue2/portable-cpu-runtime, yue2/macos-cpu-worker, yue2/macos-metal-worker]
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,18 @@ jobs:
           cmake -S .build/onednn-source -B "$RUNNER_TEMP/dnnl-build"             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$VOCAL_CPU_ONEDNN_ROOT"             -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_INSTALL_NAME_DIR=@rpath             -DDNNL_CPU_RUNTIME=THREADPOOL -DDNNL_GPU_RUNTIME=NONE -DONEDNN_BUILD_GRAPH=OFF             -DDNNL_BUILD_TESTS=OFF -DDNNL_BUILD_EXAMPLES=OFF -DDNNL_ENABLE_WORKLOAD=INFERENCE
           cmake --build "$RUNNER_TEMP/dnnl-build" --config Release --parallel "$(sysctl -n hw.logicalcpu)"
           cmake --install "$RUNNER_TEMP/dnnl-build"
-          cargo build --release --locked -p vocal-fast --features cpu-graph
+          features=cpu-graph
+          backend=cpu-graph
+          artifact=vocal-fast-macos-arm64-cpu
+          if [[ "$GITHUB_REF_NAME" = yue2/macos-metal-worker ]]; then
+            features=metal-projections
+            backend=metal-projections
+            artifact=vocal-fast-macos-arm64-metal-preview
+          fi
+          cargo build --release --locked -p vocal-fast --features "$features"
+          if [[ "$backend" = metal-projections ]]; then
+            cargo test --release --locked -p vocal-cpu --features metal-projections --test linear --no-run
+          fi
           dest="$RUNNER_TEMP/rvc-component"
           mkdir -p "$dest/licenses"
           cp LICENSE "$dest/licenses/vocal-fast-rs-LICENSE"
@@ -41,7 +52,7 @@ jobs:
           bash "$check" prepare "$dest"
           cd "$dest"
           env -u DYLD_LIBRARY_PATH ./vocal-fast --help
-          archive="$RUNNER_TEMP/vocal-fast-macos-arm64-cpu.tar.gz"
+          archive="$RUNNER_TEMP/$artifact.tar.gz"
           tar -czf "$archive" .
           relocated="$RUNNER_TEMP/Музыкальная студия/RVC"
           mkdir -p "$relocated"
@@ -49,10 +60,14 @@ jobs:
           cd "$relocated"
           bash "$check" verify "$relocated"
           env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH ./vocal-fast --help
-          if [[ "$GITHUB_REF_NAME" = yue2/macos-cpu-worker ]]; then
-            bash "$GITHUB_WORKSPACE/scripts/check-yue2-macos-worker.sh" "$relocated/vocal-fast" "$RUNNER_TEMP/Музыкальная студия/Worker QA"
+          if [[ "$backend" = metal-projections ]]; then
+            otool -L "$relocated/vocal-fast" | grep -F Metal.framework
+            otool -L "$relocated/vocal-fast" | grep -F MetalPerformanceShaders.framework
+          fi
+          if [[ "$GITHUB_REF_NAME" = yue2/macos-*-worker ]]; then
+            bash "$GITHUB_WORKSPACE/scripts/check-yue2-macos-worker.sh" "$relocated/vocal-fast" "$RUNNER_TEMP/Музыкальная студия/Worker QA" "$backend"
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: vocal-fast-macos-arm64-cpu
-          path: ${{ runner.temp }}/vocal-fast-macos-arm64-cpu.tar.gz
+          name: ${{ github.ref_name == 'yue2/macos-metal-worker' && 'vocal-fast-macos-arm64-metal-preview' || 'vocal-fast-macos-arm64-cpu' }}
+          path: ${{ runner.temp }}/vocal-fast-macos-arm64-*.tar.gz

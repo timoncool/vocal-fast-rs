@@ -41,7 +41,7 @@ pub fn run(models: &Path, cache: &Path) -> CliResult<()> {
         }
     }
     #[cfg(feature = "tensorrt-rtx")]
-    let (backend, backend_config, builder) = {
+    let (backend, backend_config, builder, device_available) = {
         vocal_tensorrt::CudaStream::new()?.synchronize()?;
         let mut trt = BackendConfig::from_env()?;
         trt.build.workspace_bytes = 2 << 30;
@@ -51,13 +51,31 @@ pub fn run(models: &Path, cache: &Path) -> CliResult<()> {
             "tensorrt-rtx",
             trt,
             json!(vocal_tensorrt::BUILDER_FINGERPRINT),
+            true,
         )
     };
     #[cfg(not(feature = "tensorrt-rtx"))]
-    let (backend, backend_config, builder) = {
-        let cpu = BackendConfig::default();
+    let (backend, backend_config, builder, device_available) = {
+        let metal = cfg!(feature = "metal-projections");
+        let cpu = BackendConfig {
+            linear_mode: if metal {
+                vocal_cpu::CpuLinearMode::Metal
+            } else {
+                Default::default()
+            },
+            ..Default::default()
+        };
         cpu.validate().map_err(|error| error.to_string())?;
-        ("cpu-graph", cpu, json!(vocal_cpu::operator_version()))
+        (
+            if metal {
+                "metal-projections"
+            } else {
+                "cpu-graph"
+            },
+            cpu,
+            json!(vocal_cpu::operator_version()),
+            !metal || vocal_cpu::metal_device_available(),
+        )
     };
     fs::create_dir_all(cache)?;
     let mut worker = Worker {
@@ -76,6 +94,7 @@ pub fn run(models: &Path, cache: &Path) -> CliResult<()> {
             "backend": backend,
             "version": env!("CARGO_PKG_VERSION"),
             "builder": builder,
+            "device_available": device_available,
         })
     )?;
     output.flush()?;
@@ -83,7 +102,12 @@ pub fn run(models: &Path, cache: &Path) -> CliResult<()> {
         let line = line?;
         let result = serde_json::from_str(&line)
             .map_err(Into::into)
-            .and_then(|request| worker.convert(request));
+            .and_then(|request| {
+                if !device_available {
+                    return Err("Metal/MPS device or command queue unavailable".into());
+                }
+                worker.convert(request)
+            });
         match result {
             Ok(details) => writeln!(output, "{}", json!({"ok": true, "details": details}))?,
             Err(error) => writeln!(

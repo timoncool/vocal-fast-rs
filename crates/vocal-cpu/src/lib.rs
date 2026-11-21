@@ -35,6 +35,22 @@ pub fn operator_version() -> String {
     format!("{}.{}.{}", version[0], version[1], version[2])
 }
 
+/// Whether this build can open the default Metal/MPS device.
+pub fn metal_device_available() -> bool {
+    #[cfg(cpu_metal_kernel)]
+    {
+        unsafe extern "C" {
+            fn vocal_cpu_metal_available() -> bool;
+        }
+        // SAFETY: the native probe takes no arguments and retains no Rust data.
+        unsafe { vocal_cpu_metal_available() }
+    }
+    #[cfg(not(cpu_metal_kernel))]
+    {
+        false
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CpuError {
     #[error("CPU configuration: {0}")]
