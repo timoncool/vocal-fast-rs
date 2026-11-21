@@ -34,6 +34,7 @@ name = "trt_context_memory_probe"
 required-features = ["tensorrt-rtx"]
 
 [dependencies]
+serde.workspace = true
 vocal-cpu = { path = "../vocal-cpu", optional = true }
 serde_json.workspace = true
 tracing.workspace = true

@@ -2,7 +2,7 @@ name: YuE2 macOS arm64 RVC component
 
 on:
   push:
-    branches: [yue2/portable-cpu-runtime]
+    branches: [yue2/portable-cpu-runtime, yue2/macos-cpu-worker]
   workflow_dispatch:
 
 permissions:
@@ -11,6 +11,7 @@ permissions:
 jobs:
   component:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -48,6 +49,9 @@ jobs:
           cd "$relocated"
           bash "$check" verify "$relocated"
           env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH ./vocal-fast --help
+          if [[ "$GITHUB_REF_NAME" = yue2/macos-cpu-worker ]]; then
+            bash "$GITHUB_WORKSPACE/scripts/check-yue2-macos-worker.sh" "$relocated/vocal-fast" "$RUNNER_TEMP/Музыкальная студия/Worker QA"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: vocal-fast-macos-arm64-cpu
